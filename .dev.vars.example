@@ -1,0 +1,9 @@
+# Copy this file to .dev.vars for local `wrangler pages dev` use.
+# In production, set these as environment variables in the Cloudflare
+# dashboard under Workers & Pages -> your project -> Settings ->
+# Environment variables. Never commit the real values or an actual
+# .dev.vars file.
+
+BASEROW_API_TOKEN=your_baserow_database_token_here
+BASEROW_TABLE_ID=your_table_id_here
+BASEROW_API_URL=https://api.baserow.io

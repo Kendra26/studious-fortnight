@@ -9,7 +9,7 @@ import {
   applyDateTimeSortingDeep,
   formatJSON,
 } from './lib/jsonTools.js';
-import { stackbyGet, stackbySet, stackbyDelete } from './lib/stackby.js';
+import { baserowGet, baserowSet, baserowDelete } from './lib/baserow.js';
 
 const LOCAL_SESSION_KEY = 'json_extract_multi_session';
 
@@ -248,13 +248,13 @@ export default function App() {
     setExtractStatus({ msg: '', kind: '' });
   }
 
-  // ---- persistence: Stackby cloud sync with localStorage fallback ----
+  // ---- persistence: Baserow cloud sync with localStorage fallback ----
   const sessionPayload = useMemo(() => ({ tabs, activeTabId, minify, savedAt: Date.now() }), [tabs, activeTabId, minify]);
 
   function fallbackLocalSave(data) {
     try {
       localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(data));
-      setCloudIndicator('Saved locally fallback at ' + new Date(data.savedAt).toLocaleTimeString() + ' (Stackby not configured).');
+      setCloudIndicator('Saved locally fallback at ' + new Date(data.savedAt).toLocaleTimeString() + ' (Baserow not configured).');
       setCloudIndicatorErr(false);
     } catch (e) {
       setCloudIndicator('Autosave failed: storage quota exceeded.');
@@ -263,20 +263,20 @@ export default function App() {
   }
 
   async function saveSession(data) {
-    // Always try the server first — the Netlify function tells us whether
-    // Stackby credentials are configured (env vars), and only falls back
+    // Always try the server first — the Cloudflare Pages Function tells us whether
+    // Baserow credentials are configured (env vars), and only falls back
     // to local storage here if they aren't, or if the request errors out.
     try {
       setCloudIndicator('Syncing…');
       setCloudIndicatorErr(false);
-      const result = await stackbySet({ sessionKey: LOCAL_SESSION_KEY, value: JSON.stringify(data) });
+      const result = await baserowSet({ sessionKey: LOCAL_SESSION_KEY, value: JSON.stringify(data) });
       if (result.configured === false) {
         setCloudConfigured(false);
         fallbackLocalSave(data);
         return;
       }
       setCloudConfigured(true);
-      setCloudIndicator('Cloud autosaved to Stackby at ' + new Date(data.savedAt).toLocaleTimeString() + '.');
+      setCloudIndicator('Cloud autosaved to Baserow at ' + new Date(data.savedAt).toLocaleTimeString() + '.');
       setCloudIndicatorErr(false);
     } catch (e) {
       setCloudIndicator('Cloud upload failed: ' + (e.message || 'unknown error') + '. Saving locally instead…');
@@ -293,13 +293,13 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionPayload]);
 
-  async function fetchFromStackbyExplicitly() {
+  async function fetchFromBaserowExplicitly() {
     try {
-      setSyncFlash({ msg: 'Contacting Stackby…', kind: '' });
-      const { configured, value: raw } = await stackbyGet({ sessionKey: LOCAL_SESSION_KEY });
+      setSyncFlash({ msg: 'Contacting Baserow…', kind: '' });
+      const { configured, value: raw } = await baserowGet({ sessionKey: LOCAL_SESSION_KEY });
       if (!configured) {
         setCloudConfigured(false);
-        flash(setSyncFlash, 'Cloud storage isn\u2019t configured on the server yet (set STACKBY_API_KEY / STACKBY_STACK_ID env vars).', 'err');
+        flash(setSyncFlash, 'Cloud storage isn\u2019t configured on the server yet (set BASEROW_API_TOKEN / BASEROW_TABLE_ID env vars).', 'err');
         return;
       }
       setCloudConfigured(true);
@@ -307,7 +307,7 @@ export default function App() {
         const data = JSON.parse(raw);
         applyLoadedSession(data);
         flash(setSyncFlash, 'Cloud workspace loaded successfully!', 'ok');
-        setCloudIndicator('Synchronized with Stackby.');
+        setCloudIndicator('Synchronized with Baserow.');
         setCloudIndicatorErr(false);
       } else {
         flash(setSyncFlash, 'No saved session found on that table yet. Saving current state…', 'err');
@@ -328,9 +328,9 @@ export default function App() {
 
   async function clearSavedSession() {
     if (cloudConfigured) {
-      if (window.confirm('Wipe the saved session row on Stackby?')) {
+      if (window.confirm('Wipe the saved session row on Baserow?')) {
         try {
-          await stackbyDelete({ sessionKey: LOCAL_SESSION_KEY });
+          await baserowDelete({ sessionKey: LOCAL_SESSION_KEY });
           flash(setExtractStatus, 'Cloud session row cleared.', 'ok');
         } catch (e) {
           flash(setExtractStatus, 'Failed to clear cloud record.', 'err');
@@ -350,8 +350,8 @@ export default function App() {
     (async () => {
       let loadedFromCloud = false;
       try {
-        setCloudIndicator('Connecting to Stackby…');
-        const { configured, value: raw } = await stackbyGet({ sessionKey: LOCAL_SESSION_KEY });
+        setCloudIndicator('Connecting to Baserow…');
+        const { configured, value: raw } = await baserowGet({ sessionKey: LOCAL_SESSION_KEY });
         setCloudConfigured(configured);
         if (configured && raw) {
           applyLoadedSession(JSON.parse(raw));
@@ -361,7 +361,7 @@ export default function App() {
           setCloudIndicator('Cloud storage not configured on the server \u2014 using local browser storage.');
         }
       } catch (e) {
-        console.error('Initial Stackby load failed, falling back to local cache', e);
+        console.error('Initial Baserow load failed, falling back to local cache', e);
         setCloudConfigured(false);
       }
 
@@ -421,7 +421,7 @@ export default function App() {
         <div className="mane"></div>
         <div className="sub">Paste a raw request/response dump — or a single clean JSON blob. It finds the actual payload buried in headers and noise, digs into any list it contains (even nested ones), and lets you cut items from an exact position or drop just the ones that match a filter.</div>
 
-        {/* Stackby cloud panel */}
+        {/* Baserow cloud panel */}
         <div className="panel">
           <div className="panel-decorator">☁️</div>
           <div className="panel-title"><span className="n">☁️</span> Cloud Storage <span className="hint">— syncs workspaces live across devices</span></div>
@@ -430,12 +430,12 @@ export default function App() {
               {cloudConfigured === null
                 ? 'Checking server configuration…'
                 : cloudConfigured
-                ? 'Connected — credentials are set server-side (Netlify env vars).'
-                : 'Not configured. Set STACKBY_API_KEY and STACKBY_STACK_ID as environment variables on the server to enable cross-device sync; using local browser storage for now.'}
+                ? 'Connected — credentials are set server-side (Cloudflare Pages env vars).'
+                : 'Not configured. Set BASEROW_API_TOKEN and BASEROW_TABLE_ID as environment variables on the server to enable cross-device sync; using local browser storage for now.'}
             </span>
           </div>
           <div className="row">
-            <button className="small primary" onClick={fetchFromStackbyExplicitly}>☁️ Force Fetch from Cloud</button>
+            <button className="small primary" onClick={fetchFromBaserowExplicitly}>☁️ Force Fetch from Cloud</button>
             <span className={`status ${syncFlash.kind}`}>{syncFlash.msg}</span>
           </div>
         </div>
