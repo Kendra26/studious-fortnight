@@ -16,7 +16,7 @@
 //
 // Expected table schema (two fields):
 //   SessionKey - single line text
-//   Payload    - long text
+//   PayLoad    - long text
 
 const DEFAULT_BASE = 'https://api.baserow.io';
 
@@ -72,7 +72,7 @@ export async function onRequestPost(context) {
   try {
     if (action === 'get') {
       const row = await findRowByKey({ base, token, tableId, sessionKey });
-      return jsonResponse(200, { configured: true, value: row ? row.Payload : null });
+      return jsonResponse(200, { configured: true, value: row ? row.PayLoad : null });
     }
 
     if (action === 'set') {
@@ -84,7 +84,7 @@ export async function onRequestPost(context) {
         const res = await fetch(url, {
           method: 'PATCH',
           headers: authHeaders(token),
-          body: JSON.stringify({ Payload: value }),
+          body: JSON.stringify({ PayLoad: value }),
         });
         if (!res.ok) {
           const text = await res.text().catch(() => '');
@@ -96,7 +96,7 @@ export async function onRequestPost(context) {
         const res = await fetch(url, {
           method: 'POST',
           headers: authHeaders(token),
-          body: JSON.stringify({ SessionKey: sessionKey, Payload: value }),
+          body: JSON.stringify({ SessionKey: sessionKey, PayLoad: value }),
         });
         if (!res.ok) {
           const text = await res.text().catch(() => '');
