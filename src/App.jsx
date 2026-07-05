@@ -12,8 +12,6 @@ import {
 import { stackbyGet, stackbySet, stackbyDelete } from './lib/stackby.js';
 
 const LOCAL_SESSION_KEY = 'json_extract_multi_session';
-const LOCAL_STACKBY_CONFIG_KEY = 'json_extract_stackby_config_cache';
-const STACKBY_TABLE_DEFAULT = 'AppSessions';
 
 function makeTab(name) {
   return {
@@ -40,9 +38,7 @@ export default function App() {
   const [minify, setMinify] = useState(false);
   const [includeSelf, setIncludeSelf] = useState(true);
 
-  const [stackbyApiKey, setStackbyApiKey] = useState('');
-  const [stackbyStackId, setStackbyStackId] = useState('');
-  const [stackbyTableName, setStackbyTableName] = useState(STACKBY_TABLE_DEFAULT);
+  const [cloudConfigured, setCloudConfigured] = useState(null); // null = unknown yet, true/false once checked
   const [cloudIndicator, setCloudIndicator] = useState('Checking cloud storage configuration…');
   const [cloudIndicatorErr, setCloudIndicatorErr] = useState(false);
   const [syncFlash, setSyncFlash] = useState({ msg: '', kind: '' });
@@ -267,34 +263,27 @@ export default function App() {
   }
 
   async function saveSession(data) {
-    if (stackbyApiKey && stackbyStackId) {
-      try {
-        setCloudIndicator('Syncing live to Stackby…');
-        setCloudIndicatorErr(false);
-        await stackbySet({
-          apiKey: stackbyApiKey,
-          stackId: stackbyStackId,
-          tableName: stackbyTableName || STACKBY_TABLE_DEFAULT,
-          sessionKey: LOCAL_SESSION_KEY,
-          value: JSON.stringify(data),
-        });
-        setCloudIndicator('Cloud autosaved to Stackby at ' + new Date(data.savedAt).toLocaleTimeString() + '.');
-        setCloudIndicatorErr(false);
-      } catch (e) {
-        setCloudIndicator('Cloud upload failed: ' + (e.message || 'unknown error') + '. Saving locally instead…');
-        setCloudIndicatorErr(true);
+    // Always try the server first — the Netlify function tells us whether
+    // Stackby credentials are configured (env vars), and only falls back
+    // to local storage here if they aren't, or if the request errors out.
+    try {
+      setCloudIndicator('Syncing…');
+      setCloudIndicatorErr(false);
+      const result = await stackbySet({ sessionKey: LOCAL_SESSION_KEY, value: JSON.stringify(data) });
+      if (result.configured === false) {
+        setCloudConfigured(false);
         fallbackLocalSave(data);
+        return;
       }
-    } else {
+      setCloudConfigured(true);
+      setCloudIndicator('Cloud autosaved to Stackby at ' + new Date(data.savedAt).toLocaleTimeString() + '.');
+      setCloudIndicatorErr(false);
+    } catch (e) {
+      setCloudIndicator('Cloud upload failed: ' + (e.message || 'unknown error') + '. Saving locally instead…');
+      setCloudIndicatorErr(true);
       fallbackLocalSave(data);
     }
   }
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STACKBY_CONFIG_KEY, JSON.stringify({
-      apiKey: stackbyApiKey, stackId: stackbyStackId, tableName: stackbyTableName,
-    }));
-  }, [stackbyApiKey, stackbyStackId, stackbyTableName]);
 
   useEffect(() => {
     if (!loadedRef.current) return; // don't autosave until initial load finished
@@ -305,18 +294,15 @@ export default function App() {
   }, [sessionPayload]);
 
   async function fetchFromStackbyExplicitly() {
-    if (!stackbyApiKey || !stackbyStackId) {
-      flash(setSyncFlash, 'Provide your API key and Stack ID first.', 'err');
-      return;
-    }
     try {
       setSyncFlash({ msg: 'Contacting Stackby…', kind: '' });
-      const raw = await stackbyGet({
-        apiKey: stackbyApiKey,
-        stackId: stackbyStackId,
-        tableName: stackbyTableName || STACKBY_TABLE_DEFAULT,
-        sessionKey: LOCAL_SESSION_KEY,
-      });
+      const { configured, value: raw } = await stackbyGet({ sessionKey: LOCAL_SESSION_KEY });
+      if (!configured) {
+        setCloudConfigured(false);
+        flash(setSyncFlash, 'Cloud storage isn\u2019t configured on the server yet (set STACKBY_API_KEY / STACKBY_STACK_ID env vars).', 'err');
+        return;
+      }
+      setCloudConfigured(true);
       if (raw) {
         const data = JSON.parse(raw);
         applyLoadedSession(data);
@@ -341,13 +327,10 @@ export default function App() {
   }
 
   async function clearSavedSession() {
-    if (stackbyApiKey && stackbyStackId) {
+    if (cloudConfigured) {
       if (window.confirm('Wipe the saved session row on Stackby?')) {
         try {
-          await stackbyDelete({
-            apiKey: stackbyApiKey, stackId: stackbyStackId,
-            tableName: stackbyTableName || STACKBY_TABLE_DEFAULT, sessionKey: LOCAL_SESSION_KEY,
-          });
+          await stackbyDelete({ sessionKey: LOCAL_SESSION_KEY });
           flash(setExtractStatus, 'Cloud session row cleared.', 'ok');
         } catch (e) {
           flash(setExtractStatus, 'Failed to clear cloud record.', 'err');
@@ -365,34 +348,21 @@ export default function App() {
   // initial load
   useEffect(() => {
     (async () => {
-      try {
-        const cached = localStorage.getItem(LOCAL_STACKBY_CONFIG_KEY);
-        if (cached) {
-          const cfg = JSON.parse(cached);
-          setStackbyApiKey(cfg.apiKey || '');
-          setStackbyStackId(cfg.stackId || '');
-          setStackbyTableName(cfg.tableName || STACKBY_TABLE_DEFAULT);
-        }
-      } catch (e) {}
-
       let loadedFromCloud = false;
       try {
-        const cached = localStorage.getItem(LOCAL_STACKBY_CONFIG_KEY);
-        const cfg = cached ? JSON.parse(cached) : null;
-        if (cfg && cfg.apiKey && cfg.stackId) {
-          setCloudIndicator('Connecting to Stackby…');
-          const raw = await stackbyGet({
-            apiKey: cfg.apiKey, stackId: cfg.stackId,
-            tableName: cfg.tableName || STACKBY_TABLE_DEFAULT, sessionKey: LOCAL_SESSION_KEY,
-          });
-          if (raw) {
-            applyLoadedSession(JSON.parse(raw));
-            setCloudIndicator('Cloud synchronization ready.');
-            loadedFromCloud = true;
-          }
+        setCloudIndicator('Connecting to Stackby…');
+        const { configured, value: raw } = await stackbyGet({ sessionKey: LOCAL_SESSION_KEY });
+        setCloudConfigured(configured);
+        if (configured && raw) {
+          applyLoadedSession(JSON.parse(raw));
+          setCloudIndicator('Cloud synchronization ready.');
+          loadedFromCloud = true;
+        } else if (!configured) {
+          setCloudIndicator('Cloud storage not configured on the server \u2014 using local browser storage.');
         }
       } catch (e) {
         console.error('Initial Stackby load failed, falling back to local cache', e);
+        setCloudConfigured(false);
       }
 
       if (!loadedFromCloud) {
@@ -401,7 +371,7 @@ export default function App() {
           if (saved) {
             applyLoadedSession(JSON.parse(saved));
             setCloudIndicator('Loaded backup context from local browser cache.');
-          } else {
+          } else if (cloudConfigured !== false) {
             setCloudIndicator('Empty clean slate initialized.');
           }
         } catch (e) {
@@ -410,6 +380,7 @@ export default function App() {
       }
       loadedRef.current = true;
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!activeTab) return null;
@@ -453,11 +424,15 @@ export default function App() {
         {/* Stackby cloud panel */}
         <div className="panel">
           <div className="panel-decorator">☁️</div>
-          <div className="panel-title"><span className="n">☁️</span> Stackby Cloud Storage Setup <span className="hint">— syncs workspaces live across devices</span></div>
+          <div className="panel-title"><span className="n">☁️</span> Cloud Storage <span className="hint">— syncs workspaces live across devices</span></div>
           <div className="row">
-            <input type="text" placeholder="Stackby API Key" value={stackbyApiKey} onChange={(e) => setStackbyApiKey(e.target.value)} style={{ flex: 2 }} />
-            <input type="text" placeholder="Stack ID (from the Stackby URL)" value={stackbyStackId} onChange={(e) => setStackbyStackId(e.target.value)} style={{ flex: 2 }} />
-            <input type="text" placeholder="Table name" value={stackbyTableName} onChange={(e) => setStackbyTableName(e.target.value)} style={{ flex: 1 }} />
+            <span className={`status ${cloudConfigured === false ? 'err' : ''}`}>
+              {cloudConfigured === null
+                ? 'Checking server configuration…'
+                : cloudConfigured
+                ? 'Connected — credentials are set server-side (Netlify env vars).'
+                : 'Not configured. Set STACKBY_API_KEY and STACKBY_STACK_ID as environment variables on the server to enable cross-device sync; using local browser storage for now.'}
+            </span>
           </div>
           <div className="row">
             <button className="small primary" onClick={fetchFromStackbyExplicitly}>☁️ Force Fetch from Cloud</button>

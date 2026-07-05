@@ -40,11 +40,26 @@ Two options:
    the Netlify dashboard. `netlify.toml` already sets the build command
    (`npm run build`) and publish directory (`dist`).
 
-No environment variables are required at build time — the Stackby
-credentials are entered by the user at runtime in the app's own "Stackby
-Cloud Storage Setup" panel and stored only in that browser's `localStorage`.
-They're sent to Netlify's own `/.netlify/functions/stackby` endpoint, which
-then talks to Stackby server-side (see "Why a function?" below).
+Stackby credentials are **server-side environment variables**, never
+entered in the browser or stored in `localStorage`. Set these in your
+Netlify site's **Site configuration → Environment variables**:
+
+| Variable             | Required | Notes                                 |
+| -------------------- | -------- | -------------------------------------- |
+| `STACKBY_API_KEY`    | yes      | from your Stackby account settings     |
+| `STACKBY_STACK_ID`   | yes      | the ID in the Stackby URL              |
+| `STACKBY_TABLE_NAME` | no       | defaults to `AppSessions`              |
+
+For local dev with `netlify dev`, create a `.env` file in this folder (see
+`.env.example`) — Netlify CLI loads it automatically and it's already
+covered by `.gitignore`, so it won't get committed.
+
+The browser only ever sends `{action, sessionKey, value}` to
+`/.netlify/functions/stackby`; the function reads the credentials from
+`process.env` and does the real HTTPS call to Stackby server-side (see "Why
+a function?" below). If the env vars aren't set, the function replies with
+`{configured: false}` and the app transparently falls back to
+`localStorage`.
 
 ### Why a function?
 
@@ -71,14 +86,13 @@ analog to Upstash's `SET`/`GET`).
    - `SessionKey` — single line text
    - `Payload` — long text
 3. Generate a Stackby **API key** from your account settings.
-4. In the app's "Stackby Cloud Storage Setup" panel, paste in:
-   - API Key
-   - Stack ID
-   - Table name (matching what you created)
+4. Set `STACKBY_API_KEY`, `STACKBY_STACK_ID`, and (if you didn't use
+   `AppSessions`) `STACKBY_TABLE_NAME` as environment variables on Netlify
+   (and/or in a local `.env` file for `netlify dev`).
 5. The app autosaves your workspace tabs to that table ~700ms after you stop
    typing, using one row keyed by a fixed session key. "Force Fetch from
    Cloud" pulls the latest saved row back down (handy for syncing across
-   devices/browsers). If Stackby isn't configured, the app transparently
+   devices/browsers). If the env vars aren't set, the app transparently
    falls back to `localStorage` in the current browser.
 
 ## What changed from the original single-file version
@@ -89,11 +103,17 @@ analog to Upstash's `SET`/`GET`).
   Stackby REST calls (row lookup by `SessionKey`, then
   `rowupdate`/`rowcreate`/`rowdelete`) — added after direct browser calls to
   Stackby failed on CORS.
-- `src/lib/stackby.js` now just posts `{action, apiKey, stackId, tableName,
-  sessionKey, value}` to that function and relays the response; it no
-  longer talks to `stackby.com` itself.
-- Removed the placeholder hardcoded credential constants from the original
-  file — credentials are only ever the ones you type into the setup panel.
+- `src/lib/stackby.js` now just posts `{action, sessionKey, value}` to that
+  function and relays the response; it no longer talks to `stackby.com`
+  itself.
+- Stackby credentials moved out of the browser entirely: the function reads
+  `STACKBY_API_KEY` / `STACKBY_STACK_ID` / `STACKBY_TABLE_NAME` from
+  `process.env` instead of accepting them from the client, and the app no
+  longer has an API-key input field or a `localStorage`-cached config.
+- Fixed a bug where `rowcreate`/`rowupdate`/`rowdelete` sent a `{"rows": [...]}`
+  body — Stackby's API actually expects `{"records": [...]}`, which is why
+  saves were failing with `HTTP 400: Request body must include a 'records'
+  array`.
 - All the JSON-wrangling logic (span detection, nested array discovery,
   keyword search, positional/keyword trimming, date-based sort) is ported
   as-is into `src/lib/jsonTools.js`.

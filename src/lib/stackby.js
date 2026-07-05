@@ -5,6 +5,12 @@
 // check the API key. Instead every call goes to our own Netlify Function
 // (netlify/functions/stackby.js), which makes the real request to Stackby
 // server-side and hands the result back.
+//
+// Credentials (API key, Stack ID, table name) are never sent from the
+// browser — they live only in Netlify environment variables and are read
+// server-side inside the function. If they aren't set yet, the function
+// replies with { configured: false } instead of a value, and the caller
+// should fall back to local storage.
 
 const FUNCTION_URL = '/.netlify/functions/stackby';
 
@@ -35,15 +41,16 @@ async function callFunction(body) {
   return data;
 }
 
-export async function stackbySet({ apiKey, stackId, tableName, sessionKey, value }) {
-  return callFunction({ action: 'set', apiKey, stackId, tableName, sessionKey, value });
+export async function stackbySet({ sessionKey, value }) {
+  return callFunction({ action: 'set', sessionKey, value });
 }
 
-export async function stackbyGet({ apiKey, stackId, tableName, sessionKey }) {
-  const data = await callFunction({ action: 'get', apiKey, stackId, tableName, sessionKey });
-  return data.value ?? null;
+export async function stackbyGet({ sessionKey }) {
+  const data = await callFunction({ action: 'get', sessionKey });
+  if (data.configured === false) return { configured: false, value: null };
+  return { configured: true, value: data.value ?? null };
 }
 
-export async function stackbyDelete({ apiKey, stackId, tableName, sessionKey }) {
-  return callFunction({ action: 'delete', apiKey, stackId, tableName, sessionKey });
+export async function stackbyDelete({ sessionKey }) {
+  return callFunction({ action: 'delete', sessionKey });
 }
