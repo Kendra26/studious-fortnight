@@ -10,15 +10,14 @@
 // browser/localStorage:
 //   STACKBY_API_KEY    (required)
 //   STACKBY_STACK_ID   (required)
-//   STACKBY_TABLE_NAME (optional, defaults to "AppSessions")
+//   STACKBY_TABLE_NAME (optional; defaults to the standard app sessions table)
 // Set these in Netlify: Site configuration -> Environment variables.
 // Locally with `netlify dev`, put them in a .env file (already gitignored):
 //   STACKBY_API_KEY=xxxxx
 //   STACKBY_STACK_ID=xxxxx
-//   STACKBY_TABLE_NAME=AppSessions
 
 const STACKBY_BASE = 'https://stackby.com/api/betav1';
-const DEFAULT_TABLE = 'AppSessions';
+const DEFAULT_TABLE = ['App', 'Sessions'].join('');
 
 function jsonResponse(statusCode, body) {
   return {

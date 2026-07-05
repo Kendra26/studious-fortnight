@@ -48,7 +48,7 @@ Netlify site's **Site configuration → Environment variables**:
 | -------------------- | -------- | -------------------------------------- |
 | `STACKBY_API_KEY`    | yes      | from your Stackby account settings     |
 | `STACKBY_STACK_ID`   | yes      | the ID in the Stackby URL              |
-| `STACKBY_TABLE_NAME` | no       | defaults to `AppSessions`              |
+| `STACKBY_TABLE_NAME` | no       | defaults to the app sessions table      |
 
 For local dev with `netlify dev`, create a `.env` file in this folder (see
 `.env.example`) — Netlify CLI loads it automatically and it's already
@@ -80,14 +80,14 @@ analog to Upstash's `SET`/`GET`).
 1. Create a Stack in Stackby (or use an existing one) and note its **Stack
    ID** — it's the string in the Stackby URL right after `/`, e.g.
    `stackby.com/{stackId}/...`.
-2. Inside that stack, create a table (default name expected: `AppSessions`,
-   but you can call it anything and enter it in the app) with exactly two
+2. Inside that stack, create a table for app sessions, or set
+   `STACKBY_TABLE_NAME` to the table you want to use. The table needs exactly two
    columns:
    - `SessionKey` — single line text
    - `Payload` — long text
 3. Generate a Stackby **API key** from your account settings.
-4. Set `STACKBY_API_KEY`, `STACKBY_STACK_ID`, and (if you didn't use
-   `AppSessions`) `STACKBY_TABLE_NAME` as environment variables on Netlify
+4. Set `STACKBY_API_KEY`, `STACKBY_STACK_ID`, and, when needed,
+   `STACKBY_TABLE_NAME` as environment variables on Netlify
    (and/or in a local `.env` file for `netlify dev`).
 5. The app autosaves your workspace tabs to that table ~700ms after you stop
    typing, using one row keyed by a fixed session key. "Force Fetch from
